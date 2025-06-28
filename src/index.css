@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .weather-gradient-blue {
+    background: radial-gradient(ellipse at top left, #e0eaff 60%, #f8fbff 100%);
+  }
+  .glass {
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.10);
+    border-radius: 16px;
+    border: 1px solid #e0eaff;
+  }
+}
