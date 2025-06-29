@@ -1,35 +1,26 @@
 import React, { useEffect, useState } from "react"
-import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/card"
+import { useDispatch, useSelector } from 'react-redux'
+import type { AppDispatch, RootState } from '../../redux/store'
+import { fetchWeatherByCity, fetchWeatherByCoordinates, fetchForecastByCoordinates, fetchForecastByCity } from '../../redux/weatherSlice'
+import { Card,CardContent } from "../../components/ui/card"
 import { Input } from "../../components/ui/input"
+import TemperatureChart from "../../components/TemperatureChart"
 
-// --- WeatherData type and mockWeatherData ---
+// --- WeatherData type ---
 export type WeatherData = {
   id: string;
   city: string;
   temperature: number;
   condition: string;
   humidity: number;
+  uvIndex: number;
   windSpeed: number;
   windDirection: string;
   feelsLike: number;
   visibility: number;
   lastUpdated: string;
+  airquality:number;
 };
-
-export const mockWeatherData: WeatherData[] = [
-  { id: "1", city: "New York", temperature: 22, condition: "partly cloudy", humidity: 65, windSpeed: 12, windDirection: "NW", feelsLike: 24, visibility: 10, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "2", city: "London", temperature: 15, condition: "overcast", humidity: 78, windSpeed: 8, windDirection: "SW", feelsLike: 13, visibility: 8, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "3", city: "Tokyo", temperature: 18, condition: "sunny", humidity: 55, windSpeed: 6, windDirection: "E", feelsLike: 19, visibility: 15, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "4", city: "Sydney", temperature: 28, condition: "clear", humidity: 45, windSpeed: 15, windDirection: "SE", feelsLike: 30, visibility: 20, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "5", city: "Paris", temperature: 12, condition: "rainy", humidity: 85, windSpeed: 10, windDirection: "W", feelsLike: 9, visibility: 5, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "6", city: "Berlin", temperature: 8, condition: "foggy", humidity: 90, windSpeed: 5, windDirection: "N", feelsLike: 6, visibility: 2, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "7", city: "Mumbai", temperature: 32, condition: "humid", humidity: 75, windSpeed: 8, windDirection: "SW", feelsLike: 38, visibility: 12, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "8", city: "Toronto", temperature: 5, condition: "snowy", humidity: 70, windSpeed: 20, windDirection: "NW", feelsLike: -2, visibility: 3, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "9", city: "Dubai", temperature: 35, condition: "hot", humidity: 40, windSpeed: 12, windDirection: "NE", feelsLike: 42, visibility: 18, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "10", city: "Singapore", temperature: 30, condition: "tropical", humidity: 80, windSpeed: 7, windDirection: "SE", feelsLike: 35, visibility: 14, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "11", city: "Los Angeles", temperature: 25, condition: "sunny", humidity: 50, windSpeed: 9, windDirection: "W", feelsLike: 26, visibility: 16, lastUpdated: "2024-01-15T10:30:00Z" },
-  { id: "12", city: "Chicago", temperature: 3, condition: "windy", humidity: 60, windSpeed: 25, windDirection: "NW", feelsLike: -5, visibility: 8, lastUpdated: "2024-01-15T10:30:00Z" },
-];
 
 // --- Weather icons (simple SVGs or emoji for now) ---
 const Cloud = (props: React.SVGProps<SVGSVGElement>) => (
@@ -45,21 +36,64 @@ const Search = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 export function Home() {
-  const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const dispatch = useDispatch<AppDispatch>();
+  const { data: weatherData, forecast, loading, error } = useSelector((state: RootState) => state.weather);
   const [searchTerm, setSearchTerm] = useState("")
+  const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null)
 
+  // Get user's location and fetch weather on component mount
   useEffect(() => {
-    // Simulate API call
-    const timer = setTimeout(() => {
-      setCurrentWeather(mockWeatherData[0])
-      setLoading(false)
-    }, 1000)
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          dispatch(fetchWeatherByCoordinates({ lat: latitude, lon: longitude }));
+          dispatch(fetchForecastByCoordinates({ lat: latitude, lon: longitude }));
+        },
+        (_error) => {
+          console.log('Location access denied, using default city');
+          // Fallback to a default city if location access is denied
+          dispatch(fetchWeatherByCity('London'));
+          dispatch(fetchForecastByCity('London'));
+        }
+      );
+    } else {
+      // Fallback for browsers that don't support geolocation
+      dispatch(fetchWeatherByCity('London'));
+      dispatch(fetchForecastByCity('London'));
+    }
+  }, [dispatch]);
 
-    return () => clearTimeout(timer)
-  }, [])
+  // Update current weather when API data is available
+  useEffect(() => {
+    if (weatherData.length > 0 && weatherData[0]) {
+      const apiWeather = weatherData[0];
+      setCurrentWeather({
+        id: "1",
+        city: apiWeather.name,
+        temperature: Math.round(apiWeather.main.temp),
+        condition: apiWeather.weather[0]?.description || "unknown",
+        humidity: apiWeather.main.humidity,
+        uvIndex: apiWeather.uvIndex || 0,
+        windSpeed: Math.round(apiWeather.wind.speed * 3.6), // Convert m/s to km/h
+        windDirection: "N", // API doesn't provide direction, using default
+        feelsLike: Math.round(apiWeather.main.feels_like),
+        visibility: 10, // API doesn't provide visibility in basic plan
+        lastUpdated: new Date().toISOString(),
+        airquality: apiWeather.airquality || 1,
+      });
+    }
+  }, [weatherData]);
 
-  if (loading) {
+  // Handle search
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchTerm.trim()) {
+      dispatch(fetchWeatherByCity(searchTerm.trim()));
+      dispatch(fetchForecastByCity(searchTerm.trim()));
+    }
+  };
+
+  if (loading && !currentWeather) {
     return (
       <div className="flex h-screen items-center justify-center ocean-gradient">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -69,15 +103,44 @@ export function Home() {
 
   if (!currentWeather) return null
 
-  const hourlyData = mockWeatherData.slice(0, 7)
+  const getUvIndexLevel = (uvIndex: number): string => {
+    if (uvIndex <= 2) return "Low";
+    if (uvIndex <= 5) return "Moderate";
+    if (uvIndex <= 7) return "High";
+    if (uvIndex <= 10) return "Very High";
+    return "Extreme";
+  };
+
+  const getAirQualityLevel = (aqi: number): string => {
+    if (aqi === 1) return "Good";
+    if (aqi === 2) return "Fair";
+    if (aqi === 3) return "Moderate";
+    if (aqi === 4) return "Poor";
+    return "Very Poor";
+  };
+
   const todayHighlights = [
-    { title: "UV Index", value: "3", subtitle: "Moderate", icon: Sun },
+    { title: "UV Index", value: `${currentWeather.uvIndex}`, subtitle: getUvIndexLevel(currentWeather.uvIndex), icon: Sun },
     { title: "Wind Status", value: `${currentWeather.windSpeed}`, subtitle: "km/h", icon: Wind },
     { title: "Sunrise & Sunset", value: "05:18 AM", subtitle: "6:30 PM", icon: Sunrise },
     { title: "Humidity", value: `${currentWeather.humidity}%`, subtitle: "High", icon: Droplets },
     { title: "Visibility", value: `${currentWeather.visibility}`, subtitle: "Very Light Mist", icon: Eye },
-    { title: "Air Quality", value: "0", subtitle: "Good", icon: Cloud },
+    { title: "Air Quality", value: `${currentWeather.airquality}`, subtitle: getAirQualityLevel(currentWeather.airquality), icon: Cloud },
   ]
+
+  const getWeatherIcon = (main: string) => {
+    switch (main.toLowerCase()) {
+      case 'clear': return '☀️';
+      case 'clouds': return '☁️';
+      case 'rain': return '🌧️';
+      case 'snow': return '❄️';
+      case 'thunderstorm': return '⛈️';
+      case 'drizzle': return '🌦️';
+      case 'mist':
+      case 'fog': return '🌫️';
+      default: return '🌤️';
+    }
+  };
 
   return (
     <div className="min-h-screen ocean-gradient weather-bg flex flex-col items-center px-2 py-6">
@@ -89,90 +152,68 @@ export function Home() {
             placeholder="Search City"
             value={searchTerm}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+            onKeyPress={handleSearch}
             className="pl-12 h-12 text-lg glass text-blue-900 placeholder:text-blue-600 border-blue-200 focus:border-blue-400 shadow-md"
           />
         </div>
+        {error && (
+          <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+            {error}
+          </div>
+        )}
       </div>
 
       {/* Main Content Grid */}
       <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Panel - Main Weather Card & Forecast */}
-        <div className="flex flex-col gap-6">
+        {/* Left Panel - Main Weather Card & Temperature Chart */}
+        <div className="flex flex-col gap-6 h-[100px]">
           {/* Main Weather Card */}
-          <Card className="bg-white/70 bg-opacity-80 backdrop-blur text-gray-900 shadow-xl p-0">
-            <CardContent className="p-8 flex flex-col items-center text-center gap-6">
+          <Card className="bg-white/70 bg-opacity-80 backdrop-blur text-gray-900 shadow-xl p-0 flex">
+            <CardContent className="flex flex-col items-center text-center gap-4 w-full h-full justify-between p-8">
               {/* Weather Icon */}
-              <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-yellow-300 rounded-full flex items-center justify-center relative shadow-lg">
-                <Cloud className="w-20 h-20 text-white" />
-                <div className="absolute -top-3 -right-3 w-10 h-10 bg-orange-400 rounded-full"></div>
+              <div className="m-2 w-20 h-20 bg-gradient-to-br  to-yellow-300 rounded-full flex items-center justify-center relative shadow-lg">
+                <span className="text-6xl">
+                  {getWeatherIcon(weatherData[0]?.weather[0]?.main || '')}
+                </span>
               </div>
               {/* Location */}
               <div className="flex items-center gap-2 justify-center">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <span className="text-blue-800 font-medium text-lg">{currentWeather.city}, India</span>
+                <span className="text-blue-800 font-medium text-base">{currentWeather.city}</span>
               </div>
               {/* Temperature */}
               <div className="flex flex-col items-center gap-1">
-                <div className="text-7xl font-light text-blue-900 flex items-start">
+                <div className="text-5xl font-light text-blue-900 flex items-start">
                   {currentWeather.temperature}
-                  <span className="text-3xl font-normal mt-2">.9</span>
-                  <span className="text-2xl font-normal mt-2 ml-1">°C</span>
+                  <span className="text-xl font-normal mt-2 ml-1">°C</span>
                 </div>
-                <div className="text-blue-600 text-lg">Friday, 11:50 PM</div>
+                <div className="text-blue-600 text-base">Feels like {currentWeather.feelsLike}°C</div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Next Day Forecast */}
-          <Card className="bg-white/70 bg-opacity-80 backdrop-blur text-gray-900 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg text-blue-900">The Next Day Forecast</CardTitle>
-              <div className="flex gap-2 mt-2">
-                <button className="px-4 py-1 bg-blue-500 text-white rounded-full text-sm shadow-sm">2 Days</button>
-                <button className="px-4 py-1 text-blue-600 text-sm hover:bg-blue-100 rounded-full">10 Days</button>
-                <button className="px-4 py-1 text-blue-600 text-sm hover:bg-blue-100 rounded-full">30 Days</button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {mockWeatherData.slice(1, 3).map((weather) => (
-                <div key={weather.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-blue-50">
-                  <div className="flex items-center gap-3">
-                    <Cloud className="w-6 h-6 text-blue-500" />
-                    <div>
-                      <div className="font-medium text-blue-900">Saturday, May 13</div>
-                      <div className="text-sm text-blue-600 capitalize">{weather.condition}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium text-blue-900">{weather.temperature}°C</div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {/* Temperature Chart Component */}
+          <TemperatureChart forecast={forecast} currentWeather={weatherData[0]} />
         </div>
 
         {/* Right Panel - Weather Title, Hourly, Highlights */}
         <div className="lg:col-span-2 flex flex-col gap-8">
           {/* Weather Condition Title */}
           <div className="text-center lg:text-left mb-2">
-            <h1 className="text-5xl md:text-7xl font-light text-blue-900 mb-4">Heavy Rain</h1>
+            <h1 className="text-5xl md:text-7xl font-light text-blue-900 mb-4 capitalize">{currentWeather.condition}</h1>
           </div>
 
           {/* Hourly Forecast */}
           <div className="grid grid-cols-3 md:grid-cols-7 gap-3 mb-4">
-            {hourlyData.map((weather, index) => {
-              const hours = ["09:00", "10:00", "11:00", "12:00", "01:00", "02:00", "03:00"]
-              return (
-                <Card key={weather.id} className="bg-white/70 bg-opacity-80 backdrop-blur text-gray-900 shadow-sm">
-                  <CardContent className="p-4 text-center flex flex-col items-center gap-2">
-                    <div className="text-xs text-blue-600 mb-1">{hours[index]}</div>
-                    <Cloud className="w-7 h-7 mx-auto mb-1 text-blue-500" />
-                    <div className="text-base font-medium text-blue-900">{weather.temperature}°C</div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {forecast?.hourly?.slice(0, 7).map((hour, index) => (
+              <Card key={index} className="bg-white/70 bg-opacity-80 backdrop-blur text-gray-900 shadow-sm">
+                <CardContent className="p-4 text-center flex flex-col items-center gap-2">
+                  <div className="text-xs text-blue-600 mb-1">{formatTime(hour.dt)}</div>
+                  <span className="text-2xl">{getWeatherIcon(hour.weather[0]?.main || '')}</span>
+                  <div className="text-base font-medium text-blue-900">{Math.round(hour.temp)}°C</div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
 
           {/* Today's Highlights */}
@@ -201,4 +242,14 @@ export function Home() {
     </div>
   )
 }
+
+function formatTime(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
 export default Home;
